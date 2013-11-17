@@ -16,37 +16,34 @@ void error(char *msg)
 
 int main(int argc, char *argv[])
 {
-     int portno = 9009;
-     int sockfd, newsockfd, clilen;
-     char buffer[256];
-     struct sockaddr_in serv_addr, cli_addr;
-     int n;
+    int portno = 9009;
+    int sockfd, newsockfd, clilen;
+    char buffer[256];
+    struct sockaddr_in serv_addr, cli_addr;
+    int n;
 
-     sockfd = socket(AF_INET, SOCK_STREAM, 0);
-     if (sockfd < 0) 
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) 
         error("ERROR opening socket");
-     bzero((char *) &serv_addr, sizeof(serv_addr));
+    bzero((char *) &serv_addr, sizeof(serv_addr));
 
-     serv_addr.sin_family = AF_INET;
-     serv_addr.sin_addr.s_addr = INADDR_ANY;
-     serv_addr.sin_port = htons(portno);
-     if (bind(sockfd, (struct sockaddr *) &serv_addr,
-              sizeof(serv_addr)) < 0) 
-              error("ERROR on binding");
-     listen(sockfd,5);
-     clilen = sizeof(cli_addr);
-     unsigned test = clilen;
-     while (1) {
-     newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &test);
-     printf("From: %u\n", cli_addr.sin_addr.s_addr);
-     if (newsockfd < 0) 
-          error("ERROR on accept");
-     bzero(buffer,256);
-     n = read(newsockfd,buffer,255);
-     if (n < 0) error("ERROR reading from socket");
-     printf("Incoming Data : %s\n",buffer);
-     n = write(newsockfd,"I got your message",18);
-     if (n < 0) error("ERROR writing to socket");
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    serv_addr.sin_port = htons(portno);
+
+    // Bind socket
+    if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+        error("ERROR on binding");
+
+    unsigned length_ptr = 16;
+    while (1) {
+        bzero(buffer,256);
+        int readSocket = recvfrom(sockfd, &buffer, 255, 0, (struct sockaddr *) &cli_addr, &length_ptr);
+        printf("From: %u\n", cli_addr.sin_addr.s_addr);
+        printf("Incoming Data : %s\n",buffer);
+
+        sendto (sockfd, "Server has received your datagram.", 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
      }
+     
      return 0; 
 }
