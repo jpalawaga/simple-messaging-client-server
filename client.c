@@ -1,3 +1,4 @@
+#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
@@ -8,9 +9,19 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
-void error(char *msg)
+using namespace std;
+
+// Message format:
+// +---+------+---------
+// | 0 | 1-16 | message...
+// +---+------+---------
+//  seq  dest
+//
+// 0=JOIN, 1=GET, 2=SEND, 3=ACK
+
+void error(string msg)
 {
-    perror(msg);
+    cout << msg;
     exit(0);
 }
 
@@ -33,7 +44,7 @@ int main(int argc, char *argv[])
         fprintf(stderr,"ERROR, no such host\n");
         exit(0);
     }
-    
+
     bzero((char *) &serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     bcopy((char *)server->h_addr, 
@@ -43,9 +54,16 @@ int main(int argc, char *argv[])
     if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) 
         error("ERROR connecting");
 
+    n = write(sockfd,"000",strlen(buffer));
+    n = read(sockfd,buffer,255);
+    if (n < 0) 
+         error("ERROR reading from socket");
+    printf("%s\n",buffer);
+
     printf("Please enter the message: ");
     bzero(buffer,256);
-    fgets(buffer,255,stdin);
+    fgets(buffer+3,252,stdin);
+    buffer[1] = 0;
     n = write(sockfd,buffer,strlen(buffer));
     if (n < 0) 
          error("ERROR writing to socket");

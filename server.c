@@ -5,10 +5,15 @@
 #include <strings.h>
 #include <sys/types.h> 
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <unistd.h>
 
-void error(char *msg)
+using namespace std; 
+
+static int current_message_id = 0;
+
+void error(string msg)
 {
     perror(msg);
     exit(1);
@@ -36,14 +41,36 @@ int main(int argc, char *argv[])
         error("ERROR on binding");
 
     unsigned length_ptr = 16;
+
     while (1) {
         bzero(buffer,256);
         int readSocket = recvfrom(sockfd, &buffer, 255, 0, (struct sockaddr *) &cli_addr, &length_ptr);
-        printf("From: %u\n", cli_addr.sin_addr.s_addr);
-        printf("Incoming Data : %s\n",buffer);
+        printf("Incoming Message\n");
+        char str[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(cli_addr.sin_addr), str, INET_ADDRSTRLEN);
+        
+        printf("From: %s\n", str);
+        printf("Data: %s\n",buffer+3);
 
         sendto (sockfd, "Server has received your datagram.", 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
      }
-     
+
      return 0; 
 }
+
+class Message
+{
+    public:
+        string source;
+        string message;
+        string time;
+        int message_id;
+        bool read;
+
+    Message (string s, string m) {
+        source = s;
+        message = m;
+        message_id = current_message_id++;
+        read = false;
+    }
+};
