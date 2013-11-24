@@ -88,13 +88,17 @@ int main(int argc, char *argv[])
 
             case '1':
                 if (messages[ip_source].size() < 1) {
-                    sendto (sockfd, "There are no messages to retreive!.", 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
+                    bzero(output_buffer, 256);
+                    output_buffer[0] = buffer[0];
+                    output_buffer[1] = '3'; // ACK means that there are no more messages to give
+                    sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
                 } else {
                     bzero(output_buffer, 256);
                     output_buffer[0] = buffer[0];
                     output_buffer[1] = '2'; // we're issuing a SEND back to the client;
                     Message temp_msg = messages[ip_source].front();
-                    sprintf(buffer+18, "%.4s", temp_msg.message.c_str());
+                    sprintf(buffer+2, "%s", temp_msg.source.c_str());
+                    sprintf(buffer+18, "%s", temp_msg.message.c_str());
                     sendto (sockfd, buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
                     bzero(buffer, 256);
                     recvfrom(sockfd, &buffer, 255, 0, (struct sockaddr *) &cli_addr, &length_ptr);
@@ -115,7 +119,9 @@ int main(int argc, char *argv[])
                 cout << " Message " << message << "/message" << "\n";
                 cout << " Dest " << dest <<  "/dest\n";
                 printf("SEND received\n");
-                sendto (sockfd, "Server has received your datagram.", 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
+                bzero(buffer+1, 255);
+                buffer[1] = '3';
+                sendto (sockfd, buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
                 break;
 
             case '3':

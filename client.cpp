@@ -8,12 +8,11 @@
 #include <netdb.h> 
 #include <netinet/in.h>
 #include <unistd.h>
+#include <curses.h>
 
 using namespace std;
 
-void sendMessage();
-
-void receiveMessage();
+static const char ACK_RESPONSE = '3';
 
 // Message format:
 // +---+------+---------
@@ -35,7 +34,6 @@ static char buffer[256];
 
 int main(int argc, char *argv[])
 {
-
     int portno = 9009;
     int sockfd, n;
 
@@ -76,17 +74,25 @@ int main(int argc, char *argv[])
 
         switch(selection[0]) {
             case 'r':
-                bzero(buffer, 256);
-                buffer[0] = 49 + (current_sequence_number++ % 10);
-                buffer[1] = '1';  // GET action
-                n = write(sockfd,buffer, 256);
-                n = read(sockfd,buffer,255);
+                while(1) {
+                    bzero(buffer, 256);
+                    buffer[0] = 49 + (current_sequence_number++ % 10);
+                    buffer[1] = '1';  // GET action
+                    n = write(sockfd,buffer, 256);
+                    n = read(sockfd,buffer,255);
 
-                bzero(buffer+2, 254);
-                buffer[1] = '3';
-                n = write(sockfd,buffer, 256);
-                printf("\n%s\n",buffer+18);
-                receiveMessage();
+                    if (buffer[1] == ACK_RESPONSE) {
+                        printf("No more messages to retreive!");
+                        break;
+                    }
+
+                    printf("\nMessage From: %s\n",buffer+2);
+                    printf("Message Received: %s\n",buffer+18);
+
+                    bzero(buffer+2, 254);
+                    buffer[1] = '3';
+                    n = write(sockfd,buffer, 256);
+                }
                 break;
 
             case 's':
@@ -112,7 +118,12 @@ int main(int argc, char *argv[])
                 n = read(sockfd,buffer,255);
                 if (n < 0) 
                      error("ERROR reading from socket");
-                printf("%s\n",buffer);
+
+                if (((int)(buffer[0]) - 48) == current_sequence_number && buffer[1] == ACK_RESPONSE) {
+                    printf("ACK successfully recieved.");
+                } else {
+                    printf("Server error occured...");
+                }
                 break;
             default:
                 printf("invalid option!");
@@ -124,10 +135,6 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void sendMessage() {
+void listen_for_ACKs() {
 
-}
-
-void receiveMessage() {
-    printf("Receive mode");
 }
