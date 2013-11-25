@@ -16,6 +16,7 @@
 using namespace std;
 
 static const char ACK_RESPONSE = '3';
+static const char READ_RECIEPT = '4';
 
 // Message format:
 // +---+------+---------
@@ -37,6 +38,7 @@ void error(string msg)
 static int current_sequence_number = 1;
 static char buffer[256];
 static bool output_unlocked = true;
+static bool block_network = false;
 
 class WindowManager {
 
@@ -110,6 +112,23 @@ public:
     }
 };
 
+void checkForReadReceipts(WindowManager * winMan, int sockfd) {
+
+    struct sockaddr_in serv_addr, cli_addr;
+    unsigned length_ptr = 16;
+    char buffer[256];
+
+    while (1) {
+        std::this_thread::sleep_for (std::chrono::milliseconds(1));
+        if (block_network == false) {
+            int readSocket = recvfrom(sockfd, &buffer, 255, MSG_DONTWAIT, (struct sockaddr *) &cli_addr, &length_ptr);
+            if (readSocket > 0 && buffer[1] == READ_RECIEPT) {
+                winMan->write("Message ID #"+string(buffer+2)+" has been delivered!");
+            }
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     WindowManager winMan = WindowManager();
@@ -121,6 +140,9 @@ int main(int argc, char *argv[])
     struct hostent *server;
     
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    thread messageReciever(checkForReadReceipts, &winMan, sockfd);
+
     if (sockfd < 0) 
         error("ERROR opening socket");
     server = gethostbyname(argv[1]);
@@ -149,7 +171,7 @@ int main(int argc, char *argv[])
         winMan.refresh();
                             /* print the message at the center of the screen */
         getstr(selection);
-        char buffer2[100];char prompt3[] = "";
+        char buffer2[100];
 
         switch(selection[0]) {
             case 'r':
@@ -158,11 +180,16 @@ int main(int argc, char *argv[])
                     buffer[0] = 49 + (current_sequence_number++ % 10);
                     buffer[1] = '1';  // GET action
                     n = write(sockfd,buffer, 256);
+                    block_network = true;
                     n = read(sockfd,buffer,255);
+                    block_network = false;
 
                     if (buffer[1] == ACK_RESPONSE) {
                         winMan.write("No more messages to retreive!");
                         break;
+                    }
+                    if (buffer[1] == READ_RECIEPT) {
+                        continue;
                     }
 
                     winMan.write("");
@@ -198,7 +225,7 @@ int main(int argc, char *argv[])
                      error("ERROR reading from socket");
 
                 if (((int)(buffer[0]) - 48) == current_sequence_number && buffer[1] == ACK_RESPONSE) {
-                    winMan.write("ACK successfully recieved.");
+                    winMan.write("ACK successfully recieved. Message ID: "+string(buffer+2));
                 } else {
                     winMan.write("Server error occured...");
                 }

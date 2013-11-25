@@ -11,6 +11,8 @@
 #include <unistd.h>
 #include <unordered_map>
 #include <queue>
+#include <thread>         // std::thread, std::this_thread::sleep_for
+#include <chrono>         // std::chrono::seconds
 
 using namespace std; 
 
@@ -26,6 +28,7 @@ class Message
 {
     public:
         string source;
+        unsigned short port;
         string message;
         string time;
         int message_id;
@@ -35,7 +38,8 @@ class Message
 
     }
 
-    Message (string s, string m) {
+    Message (unsigned short p, string s, string m) {
+        port = p;
         source = s;
         message = m;
         message_id = current_message_id++;
@@ -51,7 +55,7 @@ int main(int argc, char *argv[])
     int portno = 9009;
     int sockfd, newsockfd, clilen;
     char buffer[256], output_buffer[256];
-    struct sockaddr_in serv_addr, cli_addr;
+    struct sockaddr_in serv_addr, cli_addr, rec_addr;
     int n;
 
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -80,6 +84,8 @@ int main(int argc, char *argv[])
         printf("Data: %s\n", buffer);
         string message;
         string dest;
+        unsigned short port = cli_addr.sin_port;
+        Message temp_msg;
 
         switch (buffer[1]) {
             case '0':
@@ -92,6 +98,7 @@ int main(int argc, char *argv[])
                     output_buffer[0] = buffer[0];
                     output_buffer[1] = '3'; // ACK means that there are no more messages to give
                     sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
+                    
                 } else {
                     bzero(output_buffer, 256);
                     output_buffer[0] = buffer[0];
@@ -99,9 +106,21 @@ int main(int argc, char *argv[])
                     Message temp_msg = messages[ip_source].front();
                     sprintf(output_buffer+2, "%s", temp_msg.source.c_str());
                     sprintf(output_buffer+18, "%s", temp_msg.message.c_str());
+
                     sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
                     bzero(buffer, 256);
                     recvfrom(sockfd, &buffer, 255, 0, (struct sockaddr *) &cli_addr, &length_ptr);
+
+                    output_buffer[0] = '0';
+                    output_buffer[1] = '4';
+                    bzero(output_buffer+2, 254);
+                    sprintf(output_buffer+2,"%d",temp_msg.message_id);
+                    memset(&rec_addr, 0, sizeof rec_addr);
+                    //The address is ipv4
+                    rec_addr.sin_family = AF_INET;
+                    inet_pton(AF_INET, temp_msg.source.c_str(), &rec_addr);
+                    rec_addr.sin_port = temp_msg.port;
+                    sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &rec_addr, length_ptr);
 
                     if (buffer[1] == '3') {
                         printf("ACK RECEIVED. POPPING.");
@@ -114,14 +133,17 @@ int main(int argc, char *argv[])
             case '2':
                 dest = string(buffer+2);
                 message = string(buffer+18);
+                temp_msg = Message(port, ip_source, message);
 
-                messages[dest].push(Message(ip_source, message));
+                messages[dest].push(temp_msg);
                 cout << " Message " << message << "/message" << "\n";
                 cout << " Dest " << dest <<  "/dest\n";
                 printf("SEND received\n");
                 bzero(buffer+1, 255);
                 buffer[1] = '3';
+                sprintf(buffer+2,"%d",temp_msg.message_id);
                 sendto (sockfd, buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
+
                 break;
 
             case '3':
