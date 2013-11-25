@@ -48,7 +48,7 @@ private:
 public:
     static void drawScreenBuffer(WINDOW * test, deque<string> * sb) {
         while(1) {
-            std::this_thread::sleep_for (std::chrono::microseconds(100));
+            std::this_thread::sleep_for (std::chrono::microseconds(1000));
             if (output_unlocked) {
                 wclear(test);
                 for (int i = sb->size(); i > 0; i--) {
@@ -61,14 +61,14 @@ public:
     WindowManager() {
         initscr();
         refresh();
-        window = newwin(23, 94, 0, 0);
+        window = newwin(22, 94, 0, 0);
         threaded = thread(drawScreenBuffer, window, &screenbuffer);
         threaded.detach();
     }
 
     void write(string message) {
         output_unlocked = false;
-        if (screenbuffer.size() >= 23) {
+        if (screenbuffer.size() >= 22) {
             screenbuffer.pop_front();
         }
         screenbuffer.push_back(message);
@@ -80,12 +80,29 @@ public:
         endwin();
     }
 
-    void requestInput(char* prompt, char* input) {
-        char str[16];
-        mvprintw(23, 0, "%s", prompt);
-                            /* print the message at the center of the screen */
-        getstr(str);
-        input = str;
+    void requestInput(string prompt, char* input, int length) {
+
+        clearUserSpace();
+        mvprintw(23, 0, "%s", (char*)prompt.c_str());
+        getnstr(input, length);
+        strtok(input, "\n");
+        clearUserSpace();
+    }
+
+    void clearline(int line) {
+        output_unlocked = false;
+        int y,x;
+        getyx(window, y, x);
+        move(line, 0);
+        clrtoeol();
+        move (y,x);
+        wrefresh(window);
+        output_unlocked = true;
+    }
+
+    void clearUserSpace() {
+        clearline(23);
+        clearline(24);
     }
 
     void refresh() {
@@ -125,14 +142,14 @@ int main(int argc, char *argv[])
         char selection[1];
         char prompt[95];
         strncpy(prompt, "                                                            ", 94);
-        mvprintw(24, 0, "%s", prompt);
+        mvprintw(23, 0, "%s", prompt);
         winMan.refresh();
         strncpy(prompt, "[R]eceive | [S]end | e[X]it $> ", 94);
-        mvprintw(24, 0, "%s", prompt);
+        mvprintw(23, 0, "%s", prompt);
         winMan.refresh();
                             /* print the message at the center of the screen */
         getstr(selection);
-        char buffer2[100];
+        char buffer2[100];char prompt3[] = "";
 
         switch(selection[0]) {
             case 'r':
@@ -148,10 +165,12 @@ int main(int argc, char *argv[])
                         break;
                     }
 
-                    sprintf(buffer2, "\nMessage Frodm: %s\n",buffer+2);
+                    winMan.write("");
+                    sprintf(buffer2, "============ FROM : %s =============",buffer+2);
                     winMan.write(buffer2);
-                    sprintf(buffer2, "Message Received: %s\n",buffer+18);
-                    winMan.write(buffer2);
+                    winMan.write(buffer+18);
+                    winMan.write("==============================================");
+                    winMan.write("");
 
                     bzero(buffer+2, 254);
                     buffer[1] = '3';
@@ -165,15 +184,10 @@ int main(int argc, char *argv[])
                 buffer[1] = '2';
 
                 // Get destination IP address
-                winMan.write("Please enter the recipient's IP: ");
-                fgets(buffer+2,16,stdin);
-                // Bit crazy here: Remove any newline characters (NO NEW LINES PLZ)
-                strtok(buffer+2, "\n");
+                winMan.requestInput("Please enter the recipient's IP: ", buffer+2, 16);
 
                 // Get message
-                winMan.write("Please enter the message: ");
-                fgets(buffer+18,248,stdin);
-                strtok(buffer+18, "\n");
+                winMan.requestInput("msg $> ", buffer+18, 247);
 
                 n = write(sockfd,buffer, 256);
                 if (n < 0) 

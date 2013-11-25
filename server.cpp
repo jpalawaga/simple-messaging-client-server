@@ -97,9 +97,9 @@ int main(int argc, char *argv[])
                     output_buffer[0] = buffer[0];
                     output_buffer[1] = '2'; // we're issuing a SEND back to the client;
                     Message temp_msg = messages[ip_source].front();
-                    sprintf(buffer+2, "%s", temp_msg.source.c_str());
-                    sprintf(buffer+18, "%s", temp_msg.message.c_str());
-                    sendto (sockfd, buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
+                    sprintf(output_buffer+2, "%s", temp_msg.source.c_str());
+                    sprintf(output_buffer+18, "%s", temp_msg.message.c_str());
+                    sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
                     bzero(buffer, 256);
                     recvfrom(sockfd, &buffer, 255, 0, (struct sockaddr *) &cli_addr, &length_ptr);
 
