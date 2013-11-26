@@ -85,23 +85,20 @@ int main(int argc, char *argv[])
     while (1) {
         bzero(buffer,256);
         int readSocket = recvfrom(sockfd, &buffer, 255, 0, (struct sockaddr *) &cli_addr, &length_ptr);
-        printf("Incoming Message\n");
         char ip_source[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(cli_addr.sin_addr), ip_source, INET_ADDRSTRLEN);
         
-        printf("From: %s\n", ip_source);
-        printf("Data: %s\n", buffer);
+        printf("\n[%s] Incoming Message\n", ip_source);
+        printf("  Data: %s\n", buffer);
         string message;
         string dest;
         unsigned short port = cli_addr.sin_port;
         Message temp_msg;
 
         switch (buffer[1]) {
-            case '0':
-                printf("JOIN received.\n");
-                break;
-
             case '1':
+                printf("    GET received\n");
+
                 if (messages[ip_source].size() < 1) {
 
                     // No messages to send, reply w/ ACK to signal this.
@@ -111,7 +108,6 @@ int main(int argc, char *argv[])
                     sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
 
                 } else {
-                    printf("GET received\n");
 
                     // Send a message. First prepare 
                     bzero(output_buffer, 256);
@@ -141,14 +137,14 @@ int main(int argc, char *argv[])
                     sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &rec_addr, length_ptr);
 
                     if (buffer[1] == '3') {
-                        printf("\nACK RECEIVED. POPPING.\n");
+                        printf("    ACK RECEIVED. POPPING.\n");
                         messages[ip_source].pop();
                     }
                 }
                 break;
 
             case '2':
-                printf("SEND received\n");
+                printf("  SEND received\n");
 
                 // Parse message incoming from client, push on stack
                 dest = string(buffer+2);
@@ -156,8 +152,8 @@ int main(int argc, char *argv[])
                 temp_msg = Message(port, ip_source, message);
                 messages[dest].push(temp_msg);
 
-                cout << " Message " << message << "/message" << "\n";
-                cout << " Dest " << dest <<  "/dest\n";
+                cout << "    [DST]" << dest    << "\n";
+                cout << "    [MSG]" << message << "\n";
                 buffer[FIELD_TYPE] = RESPONSE_ACK;
 
                 // Send ACK.
@@ -168,7 +164,7 @@ int main(int argc, char *argv[])
                 break;
 
             default:
-                printf("Noise received.\n");
+                printf("  Noise received.\n");
                 break;
         }
      }

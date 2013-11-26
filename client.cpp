@@ -15,12 +15,15 @@
 
 using namespace std;
 
-static const char ACK_RESPONSE = '3';
-static const char READ_RECIEPT = '4';
-static bool screen_refresh_loop = true;
-static bool read_refresh_loop = true;
+static const int FIELD_SEQ = 0;
+static const int FIELD_TYPE = 1;
+static const char RESPONSE_GET     = '1';
+static const char RESPONSE_SEND    = '2';
+static const char RESPONSE_ACK     = '3';
+static const char RESPONSE_RECEIPT = '4';
 static int current_sequence_number = 1;
-static char buffer[256];
+static const int BUFF_SZ = 256;
+static char buffer[BUFF_SZ];
 static bool output_unlocked = true;
 static bool block_network = false;
 
@@ -106,14 +109,15 @@ void checkForReadReceipts(WindowManager * winMan, int sockfd) {
 
     struct sockaddr_in serv_addr, cli_addr;
     unsigned length_ptr = 16;
-    char buffer[256];
+    char buffer[BUFF_SZ];
 
     while (1) {
         //std::this_thread::sleep_for (std::chrono::milliseconds(1));
         if (block_network == false) {
             int readSocket = recvfrom(sockfd, &buffer, 255, MSG_DONTWAIT, (struct sockaddr *) &cli_addr, &length_ptr);
-            if (readSocket > 0 && buffer[1] == READ_RECIEPT) {
+            if (readSocket > 0 && buffer[FIELD_TYPE] == RESPONSE_RECEIPT) {
                 winMan->write("Message ID #"+string(buffer+2)+" has been delivered!");
+                memset(buffer, 0, BUFF_SZ);
             }
         }
     }
@@ -142,7 +146,7 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    bzero((char *) &serv_addr, sizeof(serv_addr));
+    memset((char *) &serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     bcopy((char *)server->h_addr, 
          (char *)&serv_addr.sin_addr.s_addr,
@@ -152,30 +156,33 @@ int main(int argc, char *argv[])
         error("ERROR connecting");
 
     while(1) {
-        std::this_thread::sleep_for (std::chrono::milliseconds(100));
-        char selection[1];
 
         // Get destination IP address
+        char selection[1];
         winMan.requestInput("[R]eceive | [S]end | e[X]it $> ", selection, 1);
 
         char buffer2[100];
+        memset(buffer, 0, BUFF_SZ);
+        buffer[FIELD_SEQ] = 49 + (current_sequence_number++ % 10);
 
         switch(selection[0]) {
             case 'r':
+            case 'R':
                 while(1) {
-                    bzero(buffer, 256);
-                    buffer[0] = 49 + (current_sequence_number++ % 10);
-                    buffer[1] = '1';  // GET action
-                    n = write(sockfd,buffer, 256);
+                    buffer[FIELD_TYPE] = RESPONSE_GET;  // GET action
+
+                    // Don't let MessageReceiver intercept messages
                     block_network = true;
-                    n = read(sockfd,buffer,255);
+                    n = write(sockfd, buffer, BUFF_SZ);
+                    n = read(sockfd, buffer, BUFF_SZ);
                     block_network = false;
 
-                    if (buffer[1] == ACK_RESPONSE) {
+                    if (buffer[FIELD_TYPE] == RESPONSE_ACK) {
                         winMan.write("No more messages to retreive!");
                         break;
                     }
-                    if (buffer[1] == READ_RECIEPT) {
+
+                    if (buffer[FIELD_TYPE] == RESPONSE_RECEIPT) {
                         winMan.write("Message from self received.");
                         continue;
                     }
@@ -187,16 +194,19 @@ int main(int argc, char *argv[])
                     winMan.write("==============================================");
                     winMan.write("");
 
-                    bzero(buffer+2, 254);
-                    buffer[1] = '3';
-                    n = write(sockfd,buffer, 256);
+                    memset(buffer+2, 0, BUFF_SZ-2);
+                    buffer[FIELD_TYPE] = RESPONSE_ACK;
+                    n = write(sockfd, buffer, BUFF_SZ);
+
+                    // Allow the chance for a delivery receipt to arrive.
+                    // @TODO: Design this problem away.
+                    std::this_thread::sleep_for (std::chrono::milliseconds(100));
                 }
                 break;
 
             case 's':
-                bzero(buffer,256);
-                buffer[0] = 49 + (current_sequence_number++ % 10);
-                buffer[1] = '2';
+            case 'S':
+                buffer[FIELD_TYPE] = RESPONSE_SEND;
 
                 // Get destination IP address
                 winMan.requestInput("Please enter the recipient's IP: ", buffer+2, 16);
@@ -208,13 +218,14 @@ int main(int argc, char *argv[])
                 n = write(sockfd,buffer, 256);
                 if (n < 0) 
                      error("ERROR writing to socket");
-                bzero(buffer,256);
-                n = read(sockfd,buffer,255);
-                block_network = false;
+
+                memset(buffer, 0, BUFF_SZ);
+                n = read(sockfd, buffer, BUFF_SZ);
                 if (n < 0) 
                      error("ERROR reading from socket");
+                block_network = false;
 
-                if (((int)(buffer[0]) - 48) == current_sequence_number && buffer[1] == ACK_RESPONSE) {
+                if (((int)(buffer[FIELD_SEQ]) - 48) == current_sequence_number && buffer[FIELD_TYPE] == RESPONSE_ACK) {
                     winMan.write("ACK successfully recieved. Message ID: "+string(buffer+2));
                 } else {
                     winMan.write("Server error occured...");
@@ -222,6 +233,9 @@ int main(int argc, char *argv[])
                 break;
 
                 case 'x':
+                case 'X':
+                case 'e':
+                case 'E':
                     winMan.end();
                     return 0;
             default:
