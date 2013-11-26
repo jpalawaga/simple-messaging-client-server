@@ -23,7 +23,6 @@ static const char RESPONSE_ACK     = '3';
 static const char RESPONSE_RECEIPT = '4';
 static int current_sequence_number = 1;
 static const int BUFF_SZ = 256;
-static char buffer[BUFF_SZ];
 static bool output_unlocked = true;
 static bool block_network = false;
 
@@ -129,31 +128,59 @@ int main(int argc, char *argv[])
 
     int portno = 9009;
     int sockfd, n;
-
     struct sockaddr_in serv_addr;
     struct hostent *server;
-    
+    char buffer[BUFF_SZ];
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
     thread messageReciever(checkForReadReceipts, &winMan, sockfd);
     messageReciever.detach();
 
-    if (sockfd < 0) 
-        error("ERROR opening socket");
-    server = gethostbyname(argv[1]);
-    if (server == NULL) {
-        fprintf(stderr,"ERROR, no such host\n");
+    // Check if we can find socket.
+    if (sockfd < 0) {
+        winMan.end();
+        cout << "ERROR: Socket could not be opened.";
         exit(0);
     }
 
+    server = gethostbyname(argv[1]);
+
+    // Try to resolve host
+    if (server == NULL) {
+        winMan.end();
+        cout << "ERROR: No such host.";
+        exit(0);
+    }
+
+    // Setup default connection.
     memset((char *) &serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     bcopy((char *)server->h_addr, 
          (char *)&serv_addr.sin_addr.s_addr,
          server->h_length);
     serv_addr.sin_port = htons(portno);
-    if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) 
-        error("ERROR connecting");
+    if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) {
+        winMan.end();
+        cout << "ERROR: Connection error.";
+        exit(0);
+    }
+
+    // Send JOIN message, check server availility
+    buffer[FIELD_SEQ]  = '0';
+    buffer[FIELD_TYPE] = '0';
+    n = write(sockfd,buffer, 256);
+    if (n < 0) {
+        winMan.end();
+        cout << "ERROR: Connection error.";
+        exit(0);
+    }
+    memset(buffer, 0, BUFF_SZ);
+    n = read(sockfd, buffer, BUFF_SZ);
+    if (n < 0) 
+        winMan.end();
+        cout << "ERROR: Connection error.";
+        exit(0);
+    }
 
     while(1) {
 
