@@ -17,6 +17,15 @@
 using namespace std; 
 
 static int current_message_id = 0;
+static const int FIELD_SEQ = 0;
+static const int FIELD_TYPE = 1;
+static const char RESPONSE_GET     = '1';
+static const char RESPONSE_SEND    = '2';
+static const char RESPONSE_ACK     = '3';
+static const char RESPONSE_RECEIPT = '4';
+
+static const char ACK_RESPONSE = '3';
+static const char READ_RECIEPT = '4';
 
 void error(string msg)
 {
@@ -94,70 +103,75 @@ int main(int argc, char *argv[])
 
             case '1':
                 if (messages[ip_source].size() < 1) {
+
+                    // No messages to send, reply w/ ACK to signal this.
                     bzero(output_buffer, 256);
-                    output_buffer[0] = buffer[0];
-                    output_buffer[1] = '3'; // ACK means that there are no more messages to give
+                    output_buffer[FIELD_SEQ] = buffer[FIELD_SEQ];
+                    output_buffer[FIELD_TYPE] = RESPONSE_ACK; // ACK means that there are no more messages to give
                     sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
-                    
+
                 } else {
+                    printf("GET received\n");
+
+                    // Send a message. First prepare 
                     bzero(output_buffer, 256);
-                    output_buffer[0] = buffer[0];
-                    output_buffer[1] = '2'; // we're issuing a SEND back to the client;
+                    output_buffer[FIELD_SEQ] = buffer[FIELD_SEQ];
+                    output_buffer[FIELD_TYPE] = RESPONSE_SEND;
                     Message temp_msg = messages[ip_source].front();
                     sprintf(output_buffer+2, "%s", temp_msg.source.c_str());
                     sprintf(output_buffer+18, "%s", temp_msg.message.c_str());
 
+                    // Send message
                     sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
                     bzero(buffer, 256);
                     recvfrom(sockfd, &buffer, 255, 0, (struct sockaddr *) &cli_addr, &length_ptr);
 
-                    output_buffer[0] = '0';
-                    output_buffer[1] = '4';
+                    // Send Delivery Receipt
+                    output_buffer[FIELD_SEQ] = '0';  // Receipts have no sequence number
+                    output_buffer[FIELD_TYPE] = '4'; // Receipts have type "Receipt"
+
+                    // Inclue message no. in receipt
                     bzero(output_buffer+2, 254);
                     sprintf(output_buffer+2,"%d",temp_msg.message_id);
                     memset(&rec_addr, 0, sizeof rec_addr);
-                    //The address is ipv4
+
                     rec_addr.sin_family = AF_INET;
                     inet_pton(AF_INET, temp_msg.source.c_str(), &rec_addr);
                     rec_addr.sin_port = temp_msg.port;
                     sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &rec_addr, length_ptr);
 
                     if (buffer[1] == '3') {
-                        printf("ACK RECEIVED. POPPING.");
+                        printf("\nACK RECEIVED. POPPING.\n");
                         messages[ip_source].pop();
                     }
                 }
-                printf("GET received\n");
                 break;
 
             case '2':
+                printf("SEND received\n");
+
+                // Parse message incoming from client, push on stack
                 dest = string(buffer+2);
                 message = string(buffer+18);
                 temp_msg = Message(port, ip_source, message);
-
                 messages[dest].push(temp_msg);
+
                 cout << " Message " << message << "/message" << "\n";
                 cout << " Dest " << dest <<  "/dest\n";
-                printf("SEND received\n");
-                bzero(buffer+1, 255);
-                buffer[1] = '3';
+                buffer[FIELD_TYPE] = RESPONSE_ACK;
+
+                // Send ACK.
+                bzero(buffer+2, 254);
                 sprintf(buffer+2,"%d",temp_msg.message_id);
                 sendto (sockfd, buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
 
                 break;
 
-            case '3':
-                printf("ACK received\n");
-                break;
-
             default:
                 printf("Noise received.\n");
-                sendto (sockfd, "Server has received your datagram.", 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
                 break;
         }
      }
-
-     sendto (sockfd, "Server has received your datagram.", 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
 
      return 0; 
 }

@@ -17,16 +17,12 @@ using namespace std;
 
 static const char ACK_RESPONSE = '3';
 static const char READ_RECIEPT = '4';
-
-// Message format:
-// +---+------+---------
-// | 0 | 1-16 | message...
-// +---+------+---------
-//  seq  dest
-//
-// 0=JOIN, 1=GET, 2=SEND, 3=ACK
-
-
+static bool screen_refresh_loop = true;
+static bool read_refresh_loop = true;
+static int current_sequence_number = 1;
+static char buffer[256];
+static bool output_unlocked = true;
+static bool block_network = false;
 
 void error(string msg)
 {
@@ -34,18 +30,11 @@ void error(string msg)
     exit(0);
 }
 
-
-static int current_sequence_number = 1;
-static char buffer[256];
-static bool output_unlocked = true;
-static bool block_network = false;
-
 class WindowManager {
 
 private:
     deque<string> screenbuffer;
     WINDOW * window;
-    thread threaded;
 
 public:
     static void drawScreenBuffer(WINDOW * test, deque<string> * sb) {
@@ -64,8 +53,9 @@ public:
         initscr();
         refresh();
         window = newwin(22, 94, 0, 0);
-        threaded = thread(drawScreenBuffer, window, &screenbuffer);
-        threaded.detach();
+        thread bufferThread(drawScreenBuffer, window, &screenbuffer);
+        bufferThread.detach();
+
     }
 
     void write(string message) {
@@ -119,7 +109,7 @@ void checkForReadReceipts(WindowManager * winMan, int sockfd) {
     char buffer[256];
 
     while (1) {
-        std::this_thread::sleep_for (std::chrono::milliseconds(1));
+        //std::this_thread::sleep_for (std::chrono::milliseconds(1));
         if (block_network == false) {
             int readSocket = recvfrom(sockfd, &buffer, 255, MSG_DONTWAIT, (struct sockaddr *) &cli_addr, &length_ptr);
             if (readSocket > 0 && buffer[1] == READ_RECIEPT) {
@@ -142,6 +132,7 @@ int main(int argc, char *argv[])
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
     thread messageReciever(checkForReadReceipts, &winMan, sockfd);
+    messageReciever.detach();
 
     if (sockfd < 0) 
         error("ERROR opening socket");
@@ -161,16 +152,12 @@ int main(int argc, char *argv[])
         error("ERROR connecting");
 
     while(1) {
+        std::this_thread::sleep_for (std::chrono::milliseconds(100));
         char selection[1];
-        char prompt[95];
-        strncpy(prompt, "                                                            ", 94);
-        mvprintw(23, 0, "%s", prompt);
-        winMan.refresh();
-        strncpy(prompt, "[R]eceive | [S]end | e[X]it $> ", 94);
-        mvprintw(23, 0, "%s", prompt);
-        winMan.refresh();
-                            /* print the message at the center of the screen */
-        getstr(selection);
+
+        // Get destination IP address
+        winMan.requestInput("[R]eceive | [S]end | e[X]it $> ", selection, 1);
+
         char buffer2[100];
 
         switch(selection[0]) {
@@ -189,6 +176,7 @@ int main(int argc, char *argv[])
                         break;
                     }
                     if (buffer[1] == READ_RECIEPT) {
+                        winMan.write("Message from self received.");
                         continue;
                     }
 
@@ -216,11 +204,13 @@ int main(int argc, char *argv[])
                 // Get message
                 winMan.requestInput("msg $> ", buffer+18, 247);
 
+                block_network = true;
                 n = write(sockfd,buffer, 256);
                 if (n < 0) 
                      error("ERROR writing to socket");
                 bzero(buffer,256);
                 n = read(sockfd,buffer,255);
+                block_network = false;
                 if (n < 0) 
                      error("ERROR reading from socket");
 
