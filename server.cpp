@@ -2,8 +2,9 @@
    The port number is passed as an argument */
 #include <iostream>
 #include <stdio.h>
+#include <netdb.h>
 #include <stdlib.h>
-#include <strings.h>
+#include <string.h>
 #include <sys/types.h> 
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -78,7 +79,7 @@ int main(int argc, char *argv[])
     serv_addr.sin_port = htons(portno);
 
     // Bind socket
-    if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+    if (::bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
         error("ERROR on binding");
 
     // Testing, used to be 16.
@@ -157,7 +158,10 @@ int main(int argc, char *argv[])
                 printf("  SEND received\n");
 
                 // Parse message incoming from client, push on stack
-                dest = string(buffer+2);
+               
+		char ip_dest[INET_ADDRSTRLEN];
+		
+                dest = string(inet_ntop(AF_INET, gethostbyname(string(buffer+2).c_str())->h_addr, ip_dest, INET_ADDRSTRLEN));
                 message = string(buffer+18);
                 temp_msg = Message(port, ip_source, message);
                 messages[dest].push(temp_msg);
