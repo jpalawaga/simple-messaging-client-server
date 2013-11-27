@@ -23,9 +23,7 @@ static const char RESPONSE_GET     = '1';
 static const char RESPONSE_SEND    = '2';
 static const char RESPONSE_ACK     = '3';
 static const char RESPONSE_RECEIPT = '4';
-
-static const char ACK_RESPONSE = '3';
-static const char READ_RECIEPT = '4';
+static const int BUFFER_SZ = 256;
 
 void error(string msg)
 {
@@ -58,19 +56,22 @@ class Message
 
 int main(int argc, char *argv[])
 {
-    // Hashmap of stacks (WHOA)
+    // Hashmap of queues (WHOA)
     unordered_map <string, queue<Message> > messages;
 
+    // Networking variables
     int portno = 9009;
     int sockfd, newsockfd, clilen;
-    char buffer[256], output_buffer[256];
     struct sockaddr_in serv_addr, cli_addr, rec_addr;
     int n;
+
+    // Output buffer is only here for clarity. Could implement easily with 1 buffer.
+    char buffer[BUFFER_SZ], output_buffer[BUFFER_SZ];
 
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0) 
         error("ERROR opening socket");
-    bzero((char *) &serv_addr, sizeof(serv_addr));
+    memset((char *) &serv_addr, 0, sizeof(serv_addr));
 
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY;
@@ -80,10 +81,11 @@ int main(int argc, char *argv[])
     if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
         error("ERROR on binding");
 
-    unsigned length_ptr = 16;
+    // Testing, used to be 16.
+    unsigned length_ptr;
 
     while (1) {
-        bzero(buffer,256);
+        memset(buffer, 0, BUFFER_SZ);
         int readSocket = recvfrom(sockfd, &buffer, 255, 0, (struct sockaddr *) &cli_addr, &length_ptr);
         char ip_source[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(cli_addr.sin_addr), ip_source, INET_ADDRSTRLEN);
@@ -96,21 +98,29 @@ int main(int argc, char *argv[])
         Message temp_msg;
 
         switch (buffer[1]) {
+            case '0':
+                printf("    JOIN received\n");
+                memset(buffer, 0, BUFFER_SZ);
+                buffer[FIELD_SEQ] = '0';
+                buffer[FIELD_TYPE] = RESPONSE_ACK;
+                sendto (sockfd, buffer, BUFFER_SZ, 0, (struct sockaddr *) &cli_addr, length_ptr);
+                break;
+
             case '1':
                 printf("    GET received\n");
 
                 if (messages[ip_source].size() < 1) {
 
                     // No messages to send, reply w/ ACK to signal this.
-                    bzero(output_buffer, 256);
+                    memset(output_buffer, 0, BUFFER_SZ);
                     output_buffer[FIELD_SEQ] = buffer[FIELD_SEQ];
                     output_buffer[FIELD_TYPE] = RESPONSE_ACK; // ACK means that there are no more messages to give
-                    sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
+                    sendto(sockfd, output_buffer, BUFFER_SZ, 0, (struct sockaddr *) &cli_addr, length_ptr);
 
                 } else {
 
                     // Send a message. First prepare 
-                    bzero(output_buffer, 256);
+                    memset(output_buffer, 0, BUFFER_SZ);
                     output_buffer[FIELD_SEQ] = buffer[FIELD_SEQ];
                     output_buffer[FIELD_TYPE] = RESPONSE_SEND;
                     Message temp_msg = messages[ip_source].front();
@@ -118,25 +128,25 @@ int main(int argc, char *argv[])
                     sprintf(output_buffer+18, "%s", temp_msg.message.c_str());
 
                     // Send message
-                    sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
-                    bzero(buffer, 256);
-                    recvfrom(sockfd, &buffer, 255, 0, (struct sockaddr *) &cli_addr, &length_ptr);
+                    sendto(sockfd, output_buffer, BUFFER_SZ, 0, (struct sockaddr *) &cli_addr, length_ptr);
+                    memset(buffer, 0, BUFFER_SZ);
+                    recvfrom(sockfd, &buffer, BUFFER_SZ, 0, (struct sockaddr *) &cli_addr, &length_ptr);
 
                     // Send Delivery Receipt
                     output_buffer[FIELD_SEQ] = '0';  // Receipts have no sequence number
                     output_buffer[FIELD_TYPE] = '4'; // Receipts have type "Receipt"
 
                     // Inclue message no. in receipt
-                    bzero(output_buffer+2, 254);
+                    memset(output_buffer+2, 0, BUFFER_SZ-2);
                     sprintf(output_buffer+2,"%d",temp_msg.message_id);
                     memset(&rec_addr, 0, sizeof rec_addr);
 
                     rec_addr.sin_family = AF_INET;
                     inet_pton(AF_INET, temp_msg.source.c_str(), &rec_addr);
                     rec_addr.sin_port = temp_msg.port;
-                    sendto (sockfd, output_buffer, 255, 0, (struct sockaddr *) &rec_addr, length_ptr);
+                    sendto(sockfd, output_buffer, BUFFER_SZ, 0, (struct sockaddr *) &rec_addr, length_ptr);
 
-                    if (buffer[1] == '3') {
+                    if (buffer[FIELD_TYPE] == RESPONSE_ACK) {
                         printf("    ACK RECEIVED. POPPING.\n");
                         messages[ip_source].pop();
                     }
@@ -157,10 +167,9 @@ int main(int argc, char *argv[])
                 buffer[FIELD_TYPE] = RESPONSE_ACK;
 
                 // Send ACK.
-                bzero(buffer+2, 254);
+                memset(buffer+2, 0, BUFFER_SZ-2);
                 sprintf(buffer+2,"%d",temp_msg.message_id);
-                sendto (sockfd, buffer, 255, 0, (struct sockaddr *) &cli_addr, length_ptr);
-
+                sendto (sockfd, buffer, BUFFER_SZ, 0, (struct sockaddr *) &cli_addr, length_ptr);
                 break;
 
             default:
