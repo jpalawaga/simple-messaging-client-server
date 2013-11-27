@@ -24,7 +24,6 @@ static const char RESPONSE_RECEIPT = '4';
 static int current_sequence_number = 1;
 static const int BUFF_SZ = 256;
 static bool output_unlocked = true;
-static bool block_network = false;
 
 void error(string msg)
 {
@@ -41,7 +40,7 @@ private:
 public:
     static void drawScreenBuffer(WINDOW * test, deque<string> * sb) {
         while(1) {
-            std::this_thread::sleep_for (std::chrono::microseconds(1000));
+            std::this_thread::sleep_for (std::chrono::microseconds(100));
             if (output_unlocked) {
                 wclear(test);
                 for (int i = sb->size(); i > 0; i--) {
@@ -51,13 +50,13 @@ public:
             }
         }
     }
+
     WindowManager() {
         initscr();
         refresh();
         window = newwin(22, 94, 0, 0);
         thread bufferThread(drawScreenBuffer, window, &screenbuffer);
         bufferThread.detach();
-
     }
 
     void write(string message) {
@@ -111,14 +110,13 @@ void checkForReadReceipts(WindowManager * winMan, int sockfd) {
     char buffer[BUFF_SZ];
 
     while (1) {
-        //std::this_thread::sleep_for (std::chrono::milliseconds(1));
-        if (block_network == false) {
+        // We only want to process read receipts here.
+        int readSocket = recvfrom(sockfd, &buffer, 255, MSG_DONTWAIT | MSG_PEEK, (struct sockaddr *) &cli_addr, &length_ptr);
+        if (readSocket > 0 && buffer[FIELD_TYPE] == RESPONSE_RECEIPT) {
             int readSocket = recvfrom(sockfd, &buffer, 255, MSG_DONTWAIT, (struct sockaddr *) &cli_addr, &length_ptr);
-            if (readSocket > 0 && buffer[FIELD_TYPE] == RESPONSE_RECEIPT) {
-                winMan->write("Message ID #"+string(buffer+2)+" has been delivered!");
-                memset(buffer, 0, BUFF_SZ);
-            }
-        }
+            winMan->write("Message ID #"+string(buffer+2)+" has been delivered!");
+            memset(buffer, 0, BUFF_SZ);
+        } 
     }
 }
 
@@ -168,17 +166,28 @@ int main(int argc, char *argv[])
     // Send JOIN message, check server availility
     buffer[FIELD_SEQ]  = '0';
     buffer[FIELD_TYPE] = '0';
-    n = write(sockfd,buffer, 256);
+    n = write(sockfd,buffer, BUFF_SZ);
     if (n < 0) {
         winMan.end();
-        cout << "ERROR: Connection error.";
+        cout << "ERROR: Could not write to socket.";
         exit(0);
     }
     memset(buffer, 0, BUFF_SZ);
+
+    struct timeval timeout;      
+    timeout.tv_sec = 2;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0) {
+        error("setsockopt failed\n");
+    }
+
+    // We're just looking to make sure the server is up.
+    // The server replies with a ACK, which could contain session information.
     n = read(sockfd, buffer, BUFF_SZ);
-    if (n < 0) 
+    if (n < 0) {
         winMan.end();
-        cout << "ERROR: Connection error.";
+        cout << "ERROR: Connection error, JOIN not responded.\n";
         exit(0);
     }
 
@@ -199,10 +208,8 @@ int main(int argc, char *argv[])
                     buffer[FIELD_TYPE] = RESPONSE_GET;  // GET action
 
                     // Don't let MessageReceiver intercept messages
-                    block_network = true;
                     n = write(sockfd, buffer, BUFF_SZ);
                     n = read(sockfd, buffer, BUFF_SZ);
-                    block_network = false;
 
                     if (buffer[FIELD_TYPE] == RESPONSE_ACK) {
                         winMan.write("No more messages to retreive!");
@@ -226,7 +233,7 @@ int main(int argc, char *argv[])
                     n = write(sockfd, buffer, BUFF_SZ);
 
                     // Allow the chance for a delivery receipt to arrive.
-                    // @TODO: Design this problem away.
+                    // @TODO: needs moar design.
                     std::this_thread::sleep_for (std::chrono::milliseconds(100));
                 }
                 break;
@@ -241,7 +248,6 @@ int main(int argc, char *argv[])
                 // Get message
                 winMan.requestInput("msg $> ", buffer+18, 247);
 
-                block_network = true;
                 n = write(sockfd,buffer, 256);
                 if (n < 0) 
                      error("ERROR writing to socket");
@@ -250,7 +256,6 @@ int main(int argc, char *argv[])
                 n = read(sockfd, buffer, BUFF_SZ);
                 if (n < 0) 
                      error("ERROR reading from socket");
-                block_network = false;
 
                 if (((int)(buffer[FIELD_SEQ]) - 48) == current_sequence_number && buffer[FIELD_TYPE] == RESPONSE_ACK) {
                     winMan.write("ACK successfully recieved. Message ID: "+string(buffer+2));
@@ -273,8 +278,4 @@ int main(int argc, char *argv[])
 
 
     return 0;
-}
-
-void listen_for_ACKs() {
-
 }
