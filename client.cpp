@@ -23,7 +23,6 @@ static const char RESPONSE_ACK     = '3';
 static const char RESPONSE_RECEIPT = '4';
 static int current_sequence_number = 1;
 static const int BUFF_SZ = 256;
-static bool output_unlocked = true;
 
 void error(string msg)
 {
@@ -38,38 +37,29 @@ private:
     WINDOW * window;
 
 public:
-    static void drawScreenBuffer(WINDOW * test, deque<string> * sb) {
-        while(1) {
-            std::this_thread::sleep_for (std::chrono::microseconds(100));
-            if (output_unlocked) {
-                wclear(test);
-                for (int i = sb->size(); i > 0; i--) {
-                    mvwprintw(test,i-1, 0, (char*)sb->at(i-1).c_str());
-                }
-                wrefresh(test);
-            }
+    void drawScreenBuffer(WINDOW * win, deque<string> * sb) {
+	wclear(win);
+        for (int i = sb->size(); i > 0; i--) {
+            mvwprintw(win, i-1, 0, (char*)sb->at(i-1).c_str());
         }
+        wrefresh(win);
     }
 
     WindowManager() {
         initscr();
         refresh();
         window = newwin(22, 94, 0, 0);
-        thread bufferThread(drawScreenBuffer, window, &screenbuffer);
-        bufferThread.detach();
     }
 
     void write(string message) {
-        output_unlocked = false;
         if (screenbuffer.size() >= 22) {
             screenbuffer.pop_front();
         }
         screenbuffer.push_back(message);
-        output_unlocked = true;
+	drawScreenBuffer(window, &screenbuffer);
     }
 
     void end() {
-        output_unlocked = false;
         endwin();
     }
 
@@ -83,14 +73,12 @@ public:
     }
 
     void clearline(int line) {
-        output_unlocked = false;
         int y,x;
         getyx(window, y, x);
         move(line, 0);
         clrtoeol();
         move (y,x);
         wrefresh(window);
-        output_unlocked = true;
     }
 
     void clearUserSpace() {
