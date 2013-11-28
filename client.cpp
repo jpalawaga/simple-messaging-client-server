@@ -1,7 +1,7 @@
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <strings.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -15,14 +15,13 @@
 
 using namespace std;
 
-static const int FIELD_SEQ = 0;
-static const int FIELD_TYPE = 1;
-static const char RESPONSE_GET     = '1';
-static const char RESPONSE_SEND    = '2';
-static const char RESPONSE_ACK     = '3';
-static const char RESPONSE_RECEIPT = '4';
-static int current_sequence_number = 1;
-static const int BUFF_SZ = 256;
+const int FIELD_SEQ = 0;
+const int FIELD_TYPE = 1;
+const char RESPONSE_GET     = '1';
+const char RESPONSE_SEND    = '2';
+const char RESPONSE_ACK     = '3';
+const char RESPONSE_RECEIPT = '4';
+const int BUFF_SZ = 256;
 
 void error(string msg)
 {
@@ -32,17 +31,17 @@ void error(string msg)
 
 class WindowManager {
 
-private:
+  private:
     deque<string> screenbuffer;
     WINDOW * window;
 
-public:
-    void drawScreenBuffer(WINDOW * win, deque<string> * sb) {
-	wclear(win);
-        for (int i = sb->size(); i > 0; i--) {
-            mvwprintw(win, i-1, 0, (char*)sb->at(i-1).c_str());
+  public:
+    void drawScreenBuffer() {
+        wclear(window);
+        for (int i = screenbuffer.size(); i > 0; i--) {
+            mvwprintw(window, i-1, 0, (char*)screenbuffer.at(i-1).c_str());
         }
-        wrefresh(win);
+        wrefresh(window);
     }
 
     WindowManager() {
@@ -56,7 +55,7 @@ public:
             screenbuffer.pop_front();
         }
         screenbuffer.push_back(message);
-	drawScreenBuffer(window, &screenbuffer);
+        drawScreenBuffer();
     }
 
     void end() {
@@ -102,7 +101,7 @@ void checkForReadReceipts(WindowManager * winMan, int sockfd) {
         int readSocket = recvfrom(sockfd, &buffer, 255, MSG_DONTWAIT | MSG_PEEK, (struct sockaddr *) &cli_addr, &length_ptr);
         if (readSocket > 0 && buffer[FIELD_TYPE] == RESPONSE_RECEIPT) {
             int readSocket = recvfrom(sockfd, &buffer, 255, MSG_DONTWAIT, (struct sockaddr *) &cli_addr, &length_ptr);
-            winMan->write("Message ID #"+string(buffer+2)+" has been delivered!");
+            winMan->write("Message ID #"+string(buffer+18)+" has been delivered!");
             memset(buffer, 0, BUFF_SZ);
         } 
     }
@@ -114,13 +113,21 @@ int main(int argc, char *argv[])
 
     int portno = 9009;
     int sockfd, n;
-    struct sockaddr_in serv_addr;
+    struct sockaddr_in serv_addr, serv_addr2;
     struct hostent *server;
     char buffer[BUFF_SZ];
+    int current_sequence_number = 0;
+
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
     thread messageReciever(checkForReadReceipts, &winMan, sockfd);
     messageReciever.detach();
+
+    serv_addr2.sin_family = AF_INET;
+    serv_addr2.sin_addr.s_addr = INADDR_ANY;
+    serv_addr2.sin_port = htons(9010);
+    if (::bind(sockfd, (struct sockaddr *) &serv_addr2, sizeof(serv_addr2)) < 0)
+        error("ERROR on binding");
 
     // Check if we can find socket.
     if (sockfd < 0) {
@@ -187,12 +194,12 @@ int main(int argc, char *argv[])
 
         char buffer2[100];
         memset(buffer, 0, BUFF_SZ);
-        buffer[FIELD_SEQ] = 49 + (current_sequence_number++ % 10);
-
+        
         switch(selection[0]) {
             case 'r':
             case 'R':
                 while(1) {
+                    buffer[FIELD_SEQ] = 49 + (current_sequence_number++ % 10);
                     buffer[FIELD_TYPE] = RESPONSE_GET;  // GET action
 
                     // Don't let MessageReceiver intercept messages
@@ -228,6 +235,7 @@ int main(int argc, char *argv[])
 
             case 's':
             case 'S':
+                buffer[FIELD_SEQ] = 49 + (current_sequence_number++ % 10);
                 buffer[FIELD_TYPE] = RESPONSE_SEND;
 
                 // Get destination IP address
