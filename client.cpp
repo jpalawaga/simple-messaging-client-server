@@ -238,10 +238,8 @@ int main(int argc, char *argv[])
                 buffer[FIELD_SEQ] = 49 + (current_sequence_number++ % 10);
                 buffer[FIELD_TYPE] = RESPONSE_SEND;
 
-                // Get destination IP address
+                // Get destination IP address / Message
                 winMan.requestInput("Please enter the recipient's IP: ", buffer+2, 16);
-
-                // Get message
                 winMan.requestInput("msg $> ", buffer+18, 247);
 
                 n = write(sockfd,buffer, 256);
@@ -254,7 +252,7 @@ int main(int argc, char *argv[])
                      error("ERROR reading from socket");
 
                 if (((int)(buffer[FIELD_SEQ]) - 48) == current_sequence_number && buffer[FIELD_TYPE] == RESPONSE_ACK) {
-                    winMan.write("ACK successfully recieved. Message ID: "+string(buffer+2));
+                    winMan.write("ACK successfully recieved. Message ID: "+string(buffer+18));
                 } else {
                     winMan.write("Server error occured...");
                 }

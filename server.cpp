@@ -175,7 +175,7 @@ int main(int argc, char *argv[])
 
                 // Send ACK.
                 memset(buffer+2, 0, BUFFER_SZ-2);
-                sprintf(buffer+2,"%d",temp_msg.message_id);
+                sprintf(buffer+18,"%d",temp_msg.message_id);
                 sendto (sockfd, buffer, BUFFER_SZ, 0, (struct sockaddr *) &cli_addr, length_ptr);
                 break;
 
