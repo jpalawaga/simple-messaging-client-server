@@ -109,14 +109,20 @@ void checkForReadReceipts(WindowManager * winMan, int sockfd) {
 
 int main(int argc, char *argv[])
 {
+    // Window Manager
     WindowManager winMan = WindowManager();
 
+    // Networking variables
     int portno = 9009;
     int sockfd, n;
     struct sockaddr_in serv_addr, serv_addr2;
     struct hostent *server;
-    char buffer[BUFF_SZ];
+    char buffer[BUFF_SZ], temp_buffer[BUFF_SZ];
     int current_sequence_number = 0;
+
+    // Variables for resend attempts
+    int retryCounter = 0;
+    bool recvfail = false;
 
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -198,6 +204,8 @@ int main(int argc, char *argv[])
         switch(selection[0]) {
             case 'r':
             case 'R':
+
+                // We will look until we receive every message.
                 while(1) {
                     buffer[FIELD_SEQ] = 49 + (current_sequence_number++ % 10);
                     buffer[FIELD_TYPE] = RESPONSE_GET;  // GET action
@@ -240,22 +248,35 @@ int main(int argc, char *argv[])
 
                 // Get destination IP address / Message
                 winMan.requestInput("Please enter the recipient's IP: ", buffer+2, 16);
-                winMan.requestInput("msg $> ", buffer+18, 247);
+                winMan.requestInput("msg $> ", buffer+18, BUFF_SZ-18);
 
-                n = write(sockfd,buffer, 256);
-                if (n < 0) 
-                     error("ERROR writing to socket");
+                    // Attempt 3x to deliver a message to the server.
+                    recvfail = true;
+                    retryCounter = 0;
+                    while (recvfail) {
+                        if (write(sockfd,buffer, 256) < 1) {
+                            error("ERROR writing to socket");
+                        }
 
-                memset(buffer, 0, BUFF_SZ);
-                n = read(sockfd, buffer, BUFF_SZ);
-                if (n < 0) 
-                     error("ERROR reading from socket");
+                        memset(temp_buffer, 0, BUFF_SZ);
+                        if (read(sockfd, temp_buffer, BUFF_SZ) < 1) {
+                            retryCounter++;
+                            continue;
+                        }
 
-                if (((int)(buffer[FIELD_SEQ]) - 48) == current_sequence_number && buffer[FIELD_TYPE] == RESPONSE_ACK) {
-                    winMan.write("ACK successfully recieved. Message ID: "+string(buffer+18));
-                } else {
-                    winMan.write("Server error occured...");
-                }
+                        if (retryCounter > 3) {
+                            winMan.write("    Message delivery failed after 3 tries (server disappeared?)!\n");
+                            break;
+                        }
+
+                        if (((int)(temp_buffer[FIELD_SEQ]) - 48) == current_sequence_number && temp_buffer[FIELD_TYPE] == RESPONSE_ACK) {
+                            winMan.write("ACK successfully recieved. Message ID: "+string(temp_buffer+18));
+                        } else {
+                            winMan.write("Server error occured...");
+                        }
+                        break;
+                    }
+
                 break;
 
                 case 'x':
