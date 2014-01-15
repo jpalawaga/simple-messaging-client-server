@@ -8,10 +8,8 @@
 #include <netdb.h> 
 #include <netinet/in.h>
 #include <unistd.h>
-#include <curses.h>
 #include <thread>         // std::thread, std::this_thread::sleep_for
 #include <chrono>         // std::chrono::seconds
-#include <deque>
 #include "WindowManager.h"
 
 using namespace std;
