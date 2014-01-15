@@ -1,9 +1,9 @@
-#ifndef __WINDOWMANAGER_H
-#define __WINDOWMANAGER_H
+#ifndef __WINDOWMANAGER_H_
+#define __WINDOWMANAGER_H_
 
+#include <string>
 #include <deque>
 #include <curses.h>
-#include <strings.h>
 
 class WindowManager {
 
@@ -12,58 +12,21 @@ class WindowManager {
     WINDOW * window;
 
   public:
-    void drawScreenBuffer() {
-        wclear(window);
-        for (int i = screenbuffer.size(); i > 0; i--) {
-            mvwprintw(window, i-1, 0, (char*)screenbuffer.at(i-1).c_str());
-        }
-        wrefresh(window);
-    }
+    void drawScreenBuffer() ;
 
-    WindowManager() {
-        initscr();
-        refresh();
-        window = newwin(22, 94, 0, 0);
-    }
+    WindowManager() ;
 
-    void write(std::string message) {
-        if (screenbuffer.size() >= 22) {
-            screenbuffer.pop_front();
-        }
-        screenbuffer.push_back(message);
-        drawScreenBuffer();
-    }
+    void write(std::string message);
 
-    void end() {
-        endwin();
-    }
+    void end();
 
-    void requestInput(std::string prompt, char* input, int length) {
+    void requestInput(std::string prompt, char* input, int length);
 
-        clearUserSpace();
-        mvprintw(23, 0, "%s", (char*)prompt.c_str());
-        getnstr(input, length);
-        strtok(input, "\n");
-        clearUserSpace();
-    }
+    void clearline(int line);
 
-    void clearline(int line) {
-        int y,x;
-        getyx(window, y, x);
-        move(line, 0);
-        clrtoeol();
-        move (y,x);
-        wrefresh(window);
-    }
+    void clearUserSpace();
 
-    void clearUserSpace() {
-        clearline(23);
-        clearline(24);
-    }
-
-    void refresh() {
-        wrefresh(window);
-    }
+    void refresh() ;
 };
 
 #endif
