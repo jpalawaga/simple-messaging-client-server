@@ -14,7 +14,7 @@ void WindowManager::drawScreenBuffer() {
 
 WindowManager::WindowManager() {
     initscr();
-    refresh();
+    wrefresh(window);
     window = newwin(22, 94, 0, 0);
 }
 
@@ -47,8 +47,4 @@ void WindowManager::clearline(int line) {
 void WindowManager::clearUserSpace() {
     clearline(23);
     clearline(24);
-}
-
-void WindowManager::refresh() {
-    wrefresh(window);
 }
